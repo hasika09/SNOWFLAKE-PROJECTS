@@ -1,0 +1,7 @@
+treatment_id,treatment_name,treatment_category
+T501,ECG,Diagnostic
+T502,MRI Scan,Diagnostic
+T503,X-Ray,Diagnostic
+T504,Consultation,Consultation
+T505,Physiotherapy,Therapy
+T506,Blood Test,Diagnostic

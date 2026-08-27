@@ -1,0 +1,532 @@
+-- =========================================================
+-- PROJECT 7 - HEALTHCARE DATA WAREHOUSE
+-- =========================================================
+
+-- =========================================================
+-- PHASE 1: WAREHOUSE AND DATABASE
+-- =========================================================
+
+
+CREATE OR REPLACE WAREHOUSE HEALTHCARE_WH
+WITH WAREHOUSE_SIZE='XSMALL'
+AUTO_SUSPEND=60
+AUTO_RESUME=TRUE
+INITIALLY_SUSPENDED=TRUE;
+
+USE WAREHOUSE HEALTHCARE_WH;
+
+CREATE OR REPLACE DATABASE HEALTHCARE_DB;
+
+CREATE OR REPLACE SCHEMA HEALTHCARE_DB.HEALTHCARE_SCHEMA;
+
+USE DATABASE HEALTHCARE_DB;
+
+USE SCHEMA HEALTHCARE_SCHEMA;
+
+
+-- =========================================================
+-- PHASE 2: FILE FORMAT AND STAGE
+-- =========================================================
+
+CREATE OR REPLACE FILE FORMAT CSV_FORMAT
+TYPE='CSV'
+FIELD_OPTIONALLY_ENCLOSED_BY='"'
+SKIP_HEADER=1
+ERROR_ON_COLUMN_COUNT_MISMATCH=TRUE;
+
+CREATE OR REPLACE STAGE HEALTHCARE_STAGE
+FILE_FORMAT=CSV_FORMAT;
+
+LIST @HEALTHCARE_STAGE;
+
+
+-- =========================================================
+-- PHASE 3: STAGING TABLES
+-- =========================================================
+
+CREATE OR REPLACE TABLE STG_PATIENTS (
+    patient_id VARCHAR,
+    patient_name VARCHAR,
+    gender VARCHAR,
+    city VARCHAR,
+    state VARCHAR
+);
+
+CREATE OR REPLACE TABLE STG_DOCTORS (
+    doctor_id VARCHAR,
+    doctor_name VARCHAR,
+    specialization VARCHAR
+);
+
+CREATE OR REPLACE TABLE STG_HOSPITALS (
+    hospital_id VARCHAR,
+    hospital_name VARCHAR,
+    city VARCHAR,
+    state VARCHAR,
+    region VARCHAR
+);
+
+CREATE OR REPLACE TABLE STG_DEPARTMENTS (
+    department_id VARCHAR,
+    department_name VARCHAR
+);
+
+CREATE OR REPLACE TABLE STG_TREATMENTS (
+    treatment_id VARCHAR,
+    treatment_name VARCHAR,
+    treatment_category VARCHAR
+);
+
+CREATE OR REPLACE TABLE STG_ADMISSIONS (
+    admission_id VARCHAR,
+    patient_id VARCHAR,
+    doctor_id VARCHAR,
+    hospital_id VARCHAR,
+    department_id VARCHAR,
+    admission_date DATE,
+    discharge_date DATE
+);
+
+CREATE OR REPLACE TABLE STG_BILLING (
+    billing_id VARCHAR,
+    admission_id VARCHAR,
+    treatment_id VARCHAR,
+    billing_date DATE,
+    quantity NUMBER,
+    treatment_amount NUMBER(12,2),
+    discount NUMBER(12,2)
+);
+
+
+-- =========================================================
+-- PHASE 4: LOAD CSV FILES
+-- =========================================================
+
+COPY INTO STG_PATIENTS
+FROM @HEALTHCARE_STAGE/patients.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_DOCTORS
+FROM @HEALTHCARE_STAGE/doctors.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_HOSPITALS
+FROM @HEALTHCARE_STAGE/hospitals.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_DEPARTMENTS
+FROM @HEALTHCARE_STAGE/departments.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_TREATMENTS
+FROM @HEALTHCARE_STAGE/treatments.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_ADMISSIONS
+FROM @HEALTHCARE_STAGE/admissions.csv
+FILE_FORMAT=CSV_FORMAT;
+
+COPY INTO STG_BILLING
+FROM @HEALTHCARE_STAGE/billing.csv
+FILE_FORMAT=CSV_FORMAT;
+
+
+-- =========================================================
+-- PHASE 5: VALIDATE STAGING TABLES
+-- =========================================================
+
+SELECT COUNT(*) FROM STG_PATIENTS;
+SELECT COUNT(*) FROM STG_DOCTORS;
+SELECT COUNT(*) FROM STG_HOSPITALS;
+SELECT COUNT(*) FROM STG_DEPARTMENTS;
+SELECT COUNT(*) FROM STG_TREATMENTS;
+SELECT COUNT(*) FROM STG_ADMISSIONS;
+SELECT COUNT(*) FROM STG_BILLING;
+
+
+-- =========================================================
+-- PHASE 6: DIMENSION TABLES
+-- =========================================================
+
+CREATE OR REPLACE TABLE DIM_PATIENT (
+    PATIENT_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    PATIENT_ID VARCHAR,
+    PATIENT_NAME VARCHAR,
+    GENDER VARCHAR,
+    CITY VARCHAR,
+    STATE VARCHAR
+);
+
+INSERT INTO DIM_PATIENT
+(
+    PATIENT_ID,
+    PATIENT_NAME,
+    GENDER,
+    CITY,
+    STATE
+)
+SELECT
+    patient_id,
+    patient_name,
+    gender,
+    city,
+    state
+FROM STG_PATIENTS;
+
+
+CREATE OR REPLACE TABLE DIM_DOCTOR (
+    DOCTOR_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    DOCTOR_ID VARCHAR,
+    DOCTOR_NAME VARCHAR,
+    SPECIALIZATION VARCHAR
+);
+
+INSERT INTO DIM_DOCTOR
+(
+    DOCTOR_ID,
+    DOCTOR_NAME,
+    SPECIALIZATION
+)
+SELECT
+    doctor_id,
+    doctor_name,
+    specialization
+FROM STG_DOCTORS;
+
+
+CREATE OR REPLACE TABLE DIM_HOSPITAL (
+    HOSPITAL_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    HOSPITAL_ID VARCHAR,
+    HOSPITAL_NAME VARCHAR,
+    CITY VARCHAR,
+    STATE VARCHAR,
+    REGION VARCHAR
+);
+
+INSERT INTO DIM_HOSPITAL
+(
+    HOSPITAL_ID,
+    HOSPITAL_NAME,
+    CITY,
+    STATE,
+    REGION
+)
+SELECT
+    hospital_id,
+    hospital_name,
+    city,
+    state,
+    region
+FROM STG_HOSPITALS;
+
+
+CREATE OR REPLACE TABLE DIM_DEPARTMENT (
+    DEPARTMENT_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    DEPARTMENT_ID VARCHAR,
+    DEPARTMENT_NAME VARCHAR
+);
+
+INSERT INTO DIM_DEPARTMENT
+(
+    DEPARTMENT_ID,
+    DEPARTMENT_NAME
+)
+SELECT
+    department_id,
+    department_name
+FROM STG_DEPARTMENTS;
+
+
+CREATE OR REPLACE TABLE DIM_TREATMENT (
+    TREATMENT_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    TREATMENT_ID VARCHAR,
+    TREATMENT_NAME VARCHAR,
+    TREATMENT_CATEGORY VARCHAR
+);
+
+INSERT INTO DIM_TREATMENT
+(
+    TREATMENT_ID,
+    TREATMENT_NAME,
+    TREATMENT_CATEGORY
+)
+SELECT
+    treatment_id,
+    treatment_name,
+    treatment_category
+FROM STG_TREATMENTS;
+
+
+-- =========================================================
+-- PHASE 7: DATE DIMENSION
+-- =========================================================
+
+CREATE OR REPLACE TABLE DIM_DATE (
+    DATE_KEY NUMBER PRIMARY KEY,
+    FULL_DATE DATE,
+    DAY NUMBER,
+    DAY_NAME VARCHAR,
+    WEEK_NO NUMBER,
+    MONTH NUMBER,
+    MONTH_NAME VARCHAR,
+    QUARTER VARCHAR,
+    YEAR NUMBER
+);
+
+INSERT INTO DIM_DATE
+SELECT
+    TO_NUMBER(TO_CHAR(FULL_DATE,'YYYYMMDD')) AS DATE_KEY,
+    FULL_DATE,
+    DAY(FULL_DATE) AS DAY,
+    DAYNAME(FULL_DATE) AS DAY_NAME,
+    WEEK(FULL_DATE) AS WEEK_NO,
+    MONTH(FULL_DATE) AS MONTH,
+    MONTHNAME(FULL_DATE) AS MONTH_NAME,
+    'Q'||QUARTER(FULL_DATE) AS QUARTER,
+    YEAR(FULL_DATE) AS YEAR
+FROM (
+    SELECT DATEADD(
+        DAY,
+        SEQ4(),
+        '2026-01-01'::DATE
+    ) AS FULL_DATE
+    FROM TABLE(GENERATOR(ROWCOUNT=>90))
+);
+
+SELECT *
+FROM DIM_DATE
+ORDER BY FULL_DATE;
+
+
+-- =========================================================
+-- PHASE 8: ADMISSION FACT TABLE
+-- =========================================================
+
+CREATE OR REPLACE TABLE FACT_ADMISSION (
+    ADMISSION_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    PATIENT_KEY NUMBER,
+    DOCTOR_KEY NUMBER,
+    HOSPITAL_KEY NUMBER,
+    DEPARTMENT_KEY NUMBER,
+    DATE_KEY NUMBER,
+    ADMISSION_COUNT NUMBER,
+    LENGTH_OF_STAY NUMBER
+);
+
+INSERT INTO FACT_ADMISSION
+(
+    PATIENT_KEY,
+    DOCTOR_KEY,
+    HOSPITAL_KEY,
+    DEPARTMENT_KEY,
+    DATE_KEY,
+    ADMISSION_COUNT,
+    LENGTH_OF_STAY
+)
+SELECT
+    p.PATIENT_KEY,
+    d.DOCTOR_KEY,
+    h.HOSPITAL_KEY,
+    dep.DEPARTMENT_KEY,
+    dt.DATE_KEY,
+    1 AS ADMISSION_COUNT,
+    DATEDIFF(
+        DAY,
+        a.admission_date,
+        a.discharge_date
+    ) AS LENGTH_OF_STAY
+FROM STG_ADMISSIONS a
+JOIN DIM_PATIENT p
+    ON a.patient_id=p.patient_id
+JOIN DIM_DOCTOR d
+    ON a.doctor_id=d.doctor_id
+JOIN DIM_HOSPITAL h
+    ON a.hospital_id=h.hospital_id
+JOIN DIM_DEPARTMENT dep
+    ON a.department_id=dep.department_id
+JOIN DIM_DATE dt
+    ON a.admission_date=dt.full_date;
+
+
+-- =========================================================
+-- PHASE 9: BILLING FACT TABLE
+-- =========================================================
+
+CREATE OR REPLACE TABLE FACT_BILLING (
+    BILLING_KEY NUMBER AUTOINCREMENT PRIMARY KEY,
+    PATIENT_KEY NUMBER,
+    DOCTOR_KEY NUMBER,
+    HOSPITAL_KEY NUMBER,
+    DEPARTMENT_KEY NUMBER,
+    TREATMENT_KEY NUMBER,
+    DATE_KEY NUMBER,
+    QUANTITY NUMBER,
+    TREATMENT_AMOUNT NUMBER(12,2),
+    DISCOUNT NUMBER(12,2),
+    NET_AMOUNT NUMBER(12,2)
+);
+
+INSERT INTO FACT_BILLING
+(
+    PATIENT_KEY,
+    DOCTOR_KEY,
+    HOSPITAL_KEY,
+    DEPARTMENT_KEY,
+    TREATMENT_KEY,
+    DATE_KEY,
+    QUANTITY,
+    TREATMENT_AMOUNT,
+    DISCOUNT,
+    NET_AMOUNT
+)
+SELECT
+    p.PATIENT_KEY,
+    d.DOCTOR_KEY,
+    h.HOSPITAL_KEY,
+    dep.DEPARTMENT_KEY,
+    t.TREATMENT_KEY,
+    dt.DATE_KEY,
+    b.quantity,
+    b.treatment_amount,
+    b.discount,
+    b.treatment_amount-b.discount AS net_amount
+FROM STG_BILLING b
+JOIN STG_ADMISSIONS a
+    ON b.admission_id=a.admission_id
+JOIN DIM_PATIENT p
+    ON a.patient_id=p.patient_id
+JOIN DIM_DOCTOR d
+    ON a.doctor_id=d.doctor_id
+JOIN DIM_HOSPITAL h
+    ON a.hospital_id=h.hospital_id
+JOIN DIM_DEPARTMENT dep
+    ON a.department_id=dep.department_id
+JOIN DIM_TREATMENT t
+    ON b.treatment_id=t.treatment_id
+JOIN DIM_DATE dt
+    ON b.billing_date=dt.full_date;
+
+
+-- =========================================================
+-- PHASE 10: VALIDATION
+-- =========================================================
+
+SELECT * FROM STG_BILLING;
+
+SELECT * FROM FACT_ADMISSION;
+
+SELECT * FROM FACT_BILLING;
+
+SELECT COUNT(*) FROM DIM_PATIENT;
+SELECT COUNT(*) FROM DIM_DOCTOR;
+SELECT COUNT(*) FROM DIM_HOSPITAL;
+SELECT COUNT(*) FROM DIM_DEPARTMENT;
+SELECT COUNT(*) FROM DIM_TREATMENT;
+SELECT COUNT(*) FROM DIM_DATE;
+
+SELECT COUNT(*) FROM FACT_ADMISSION;
+SELECT COUNT(*) FROM FACT_BILLING;
+
+
+-- =========================================================
+-- PHASE 11: REPORTS
+-- =========================================================
+
+-- Hospital-wise admissions
+
+SELECT
+    h.HOSPITAL_NAME,
+    SUM(f.ADMISSION_COUNT) AS TOTAL_ADMISSIONS
+FROM FACT_ADMISSION f
+JOIN DIM_HOSPITAL h
+    ON f.HOSPITAL_KEY=h.HOSPITAL_KEY
+GROUP BY h.HOSPITAL_NAME
+ORDER BY TOTAL_ADMISSIONS DESC;
+
+
+-- Hospital-wise revenue
+
+SELECT
+    h.HOSPITAL_NAME,
+    SUM(f.NET_AMOUNT) AS TOTAL_REVENUE
+FROM FACT_BILLING f
+JOIN DIM_HOSPITAL h
+    ON f.HOSPITAL_KEY=h.HOSPITAL_KEY
+GROUP BY h.HOSPITAL_NAME
+ORDER BY TOTAL_REVENUE DESC;
+
+
+-- Monthly revenue
+
+SELECT
+    d.YEAR,
+    d.MONTH,
+    SUM(f.NET_AMOUNT) AS TOTAL_REVENUE
+FROM FACT_BILLING f
+JOIN DIM_DATE d
+    ON f.DATE_KEY=d.DATE_KEY
+GROUP BY d.YEAR,d.MONTH
+ORDER BY d.YEAR,d.MONTH;
+
+
+-- Monthly revenue with month name
+
+SELECT
+    TO_CHAR(d.FULL_DATE,'YYYY-MM') AS MONTH,
+    SUM(f.NET_AMOUNT) AS TOTAL_REVENUE
+FROM FACT_BILLING f
+JOIN DIM_DATE d
+    ON f.DATE_KEY=d.DATE_KEY
+GROUP BY TO_CHAR(d.FULL_DATE,'YYYY-MM')
+ORDER BY MONTH;
+
+
+-- Doctor-wise revenue
+
+SELECT
+    d.DOCTOR_NAME AS DOCTOR,
+    SUM(f.NET_AMOUNT) AS TOTAL_REVENUE
+FROM FACT_BILLING f
+JOIN DIM_DOCTOR d
+    ON f.DOCTOR_KEY=d.DOCTOR_KEY
+GROUP BY d.DOCTOR_NAME
+ORDER BY TOTAL_REVENUE DESC;
+
+
+-- Hospital admissions and revenue together
+
+WITH admission_summary AS (
+    SELECT
+        HOSPITAL_KEY,
+        SUM(ADMISSION_COUNT) AS TOTAL_ADMISSIONS
+    FROM FACT_ADMISSION
+    GROUP BY HOSPITAL_KEY
+),
+billing_summary AS (
+    SELECT
+        h.HOSPITAL_KEY,
+        SUM(f.NET_AMOUNT) AS TOTAL_REVENUE
+    FROM FACT_BILLING f
+    JOIN DIM_HOSPITAL h
+        ON f.HOSPITAL_KEY=h.HOSPITAL_KEY
+    GROUP BY h.HOSPITAL_KEY
+)
+SELECT
+    h.HOSPITAL_NAME,
+    COALESCE(a.TOTAL_ADMISSIONS,0) AS TOTAL_ADMISSIONS,
+    COALESCE(b.TOTAL_REVENUE,0) AS TOTAL_REVENUE
+FROM DIM_HOSPITAL h
+LEFT JOIN admission_summary a
+    ON h.HOSPITAL_KEY=a.HOSPITAL_KEY
+LEFT JOIN billing_summary b
+    ON h.HOSPITAL_KEY=b.HOSPITAL_KEY
+ORDER BY TOTAL_ADMISSIONS DESC;
+
+
+-- Billing summary
+
+SELECT
+    SUM(TREATMENT_AMOUNT) AS GROSS_AMOUNT,
+    SUM(DISCOUNT) AS TOTAL_DISCOUNT,
+    SUM(NET_AMOUNT) AS NET_REVENUE
+FROM FACT_BILLING;
